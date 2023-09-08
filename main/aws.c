@@ -55,7 +55,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "ssd1306.h"
 /* POSIX includes. */
 #include <unistd.h>
 
@@ -71,10 +70,10 @@
 
 /*Include backoff algorithm header for retry logic.*/
 #include "backoff_algorithm.h"
-
+#include "driver/gpio.h"
 /* Clock for timer. */
 #include "clock.h"
-extern  SSD1306_t ssd1306Dev;
+
 #ifdef CONFIG_EXAMPLE_USE_ESP_SECURE_CERT_MGR
     #include "esp_secure_cert_read.h"    
 #endif
@@ -181,13 +180,18 @@ extern const char root_cert_auth_end[]   asm("_binary_root_cert_auth_crt_end");
  * The topic name starts with the client identifier to ensure that each demo
  * interacts with a unique topic name.
  */
-#define MQTT_EXAMPLE_TOPIC                  CLIENT_IDENTIFIER "/example/topic"
+#define MQTT_EXAMPLE_TOPIC                   "esp32/sub/url"
 
 /**
  * @brief Length of client MQTT topic.
  */
 #define MQTT_EXAMPLE_TOPIC_LENGTH           ( ( uint16_t ) ( sizeof( MQTT_EXAMPLE_TOPIC ) - 1 ) )
+#define MQTT_RESULT_TOPIC                   "esp32/pub/data"
 
+/**
+ * @brief Length of client MQTT topic.
+ */
+#define MQTT_RESULT_TOPIC_LENGTH           ( ( uint16_t ) ( sizeof( MQTT_RESULT_TOPIC ) - 1 ) )
 /**
  * @brief The MQTT message published in this example.
  */
@@ -198,6 +202,17 @@ extern const char root_cert_auth_end[]   asm("_binary_root_cert_auth_crt_end");
  */
 #define MQTT_EXAMPLE_MESSAGE_LENGTH         ( ( uint16_t ) ( sizeof( MQTT_EXAMPLE_MESSAGE ) - 1 ) )
 
+
+
+/**
+ * @brief The MQTT message published in this example.
+ */
+#define MQTT_REQUEST_URL_MESSAGE                "{\"payload\":\"url pls\"}"
+
+/**
+ * @brief The length of the MQTT message published in this example.
+ */
+#define MQTT_REQUEST_URL_MESSAGE_LENGTH         ( ( uint16_t ) ( sizeof( MQTT_REQUEST_URL_MESSAGE ) - 1 ) )
 /**
  * @brief Maximum number of outgoing publishes maintained in the application
  * until an ack is received from the broker.
@@ -299,6 +314,109 @@ typedef struct PublishPackets
     MQTTPublishInfo_t pubInfo;
 } PublishPackets_t;
 
+/**
+ * Helper function to split the string into tokens. This is for parsing responses back from AWS
+ */
+char** str_split(char* a_str, const char a_delim)
+{
+    char** result    = 0;
+    size_t count     = 0;
+    char* tmp        = a_str;
+    char* last_comma = 0;
+    char delim[2];
+    delim[0] = a_delim;
+    delim[1] = 0;
+
+    /* Count how many elements will be extracted. */
+    while (*tmp)
+    {
+        if (a_delim == *tmp)
+        {
+            count++;
+            last_comma = tmp;
+        }
+        tmp++;
+    }
+
+    /* Add space for trailing token. */
+    count += last_comma < (a_str + strlen(a_str) - 1);
+
+    /* Add space for terminating null string so caller
+       knows where the list of returned strings ends. */
+    count++;
+
+    result = malloc(sizeof(char*) * count);
+
+    if (result)
+    {
+        size_t idx  = 0;
+        char* token = strtok(a_str, delim);
+
+        while (token)
+        {
+            assert(idx < count);
+            *(result + idx++) = strdup(token);
+            token = strtok(0, delim);
+        }
+        assert(idx == count - 1);
+        *(result + idx) = 0;
+    }
+
+    return result;
+}
+
+#define BUTTON GPIO_NUM_12
+#define GREEN_LED_GPIO 15
+#define RED_LED_GPIO GPIO_NUM_4
+#define YELLOW_LED_GPIO 14
+
+bool buttonPressedDown = false;
+bool buttonTrigger = false;
+bool urlTrigger = false;
+
+void initGpio()
+{
+     gpio_pad_select_gpio(BUTTON);
+    gpio_set_direction(BUTTON, GPIO_MODE_INPUT);
+    gpio_pulldown_en(BUTTON);
+    gpio_pullup_dis(BUTTON);
+
+    gpio_pad_select_gpio(RED_LED_GPIO);
+    gpio_pad_select_gpio(YELLOW_LED_GPIO);
+    gpio_pad_select_gpio(GREEN_LED_GPIO);
+    /* Set the GPIO as a push/pull output for LED */
+    gpio_set_direction(RED_LED_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(YELLOW_LED_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GREEN_LED_GPIO, GPIO_MODE_OUTPUT);
+}
+void turnOnLight()
+{
+ gpio_set_level(RED_LED_GPIO, 1);
+}
+
+void turnOffLight()
+{
+    gpio_set_level(RED_LED_GPIO, 0);
+}
+/**
+ * Cheater's way of checking if assigned button pin is high or low.
+ */ 
+void button_pressed_task() {
+    while (1) {
+        if (gpio_get_level(BUTTON) && !buttonPressedDown) {
+            buttonPressedDown = true;
+            buttonTrigger = false;
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        } 
+        
+        if (!gpio_get_level(BUTTON) && buttonPressedDown) {
+            buttonPressedDown = false;
+            buttonTrigger = true;
+        }
+
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
 /*-----------------------------------------------------------*/
 
 /**
@@ -314,6 +432,8 @@ static uint16_t globalAckPacketIdentifier = 0U;
  */
 static uint16_t globalSubscribePacketIdentifier = 0U;
 
+
+static uint16_t globalSubscribePacketIdentifier2 = 0U;
 /**
  * @brief Packet Identifier generated when Unsubscribe request was sent to the broker;
  * it is used to match received Unsubscribe ACK to the transmitted unsubscribe
@@ -333,7 +453,7 @@ static PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ] = { 0 }
  * Used to re-subscribe to topics that failed initial subscription attempts.
  */
 static MQTTSubscribeInfo_t pGlobalSubscriptionList[ 1 ];
-
+static MQTTSubscribeInfo_t pGlobalSubscriptionList2[ 1 ];
 /**
  * @brief The network buffer must remain valid for the lifetime of the MQTT context.
  */
@@ -920,7 +1040,9 @@ static int handlePublishResend( MQTTContext_t * pMqttContext )
 }
 
 /*-----------------------------------------------------------*/
+char t_filename[41] = "";
 
+extern esp_err_t upload_image_to_s3(char *webserver, char *url);
 static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
                                    uint16_t packetIdentifier )
 {
@@ -943,18 +1065,75 @@ static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
                    packetIdentifier,
                    ( int ) pPublishInfo->payloadLength,
                    ( const char * ) pPublishInfo->pPayload ) );
-                   char *str=( char * ) pPublishInfo->pPayload;
-                   /**
-                    * Your own handling here!
-                   */
-                   for(int i= ( int ) pPublishInfo->payloadLength;i<16;i++)
-                   {
-                    str[i]=' ';
-                   }
-                   str[16]=0;
-                ssd1306_scroll_text(&ssd1306Dev, str, 16, false);
-                  //ssd1306_display_text(&ssd1306Dev, 0, str, 14, false);
-                   
+                     char* t_payload = malloc (sizeof(char) * (int) pPublishInfo->payloadLength+1);
+            strlcpy(t_payload, (char *)pPublishInfo->pPayload, (int)pPublishInfo->payloadLength+1);
+                   // handle palyload here!
+              char** tokens;
+        tokens = str_split(t_payload, '/');
+
+         
+        char* t_url = malloc(128 * sizeof(char));
+        char* t_params = malloc(1280 * sizeof(char));
+        if (tokens)
+        {
+            int i;
+            for (i = 0; *(tokens + i); i++)
+            {
+                if (i == 0) {
+                    strlcpy(t_filename, *(tokens + i), strlen(*(tokens + i))+1);
+                   // ESP_LOGI("URL", "Filename: %s", t_filename);
+                }
+                if (i == 1) {
+                    strlcpy(t_url, *(tokens + i), strlen(*(tokens + i))+1);
+                   // ESP_LOGI("URL", "URL: %s", t_url);
+                }
+                if (i == 2) {
+                    strlcpy(t_params, *(tokens + i), strlen(*(tokens + i))+1);
+                   // ESP_LOGI("URL", "Params: %s", t_params);
+                }
+                free(*(tokens + i));
+            }
+            free(tokens);
+
+            if (i == 3) {
+                if (upload_image_to_s3(t_url, t_params) == ESP_OK) {
+                    urlTrigger = true;
+                }
+            }
+        }
+        free(t_url);
+        free(t_params);
+    }
+    else if( ( pPublishInfo->topicNameLength == MQTT_RESULT_TOPIC_LENGTH ) &&
+        ( 0 == strncmp( MQTT_RESULT_TOPIC,
+                        pPublishInfo->pTopicName,
+                        pPublishInfo->topicNameLength ) ) )
+    {
+             LogInfo( ( "Incoming Publish Topic Name: %.*s matches subscribed topic.\n"
+                   "Incoming Publish message Packet Id is %u.\n"
+                   "Incoming Publish Message : %.*s.\n\n",
+                   pPublishInfo->topicNameLength,
+                   pPublishInfo->pTopicName,
+                   packetIdentifier,
+                   ( int ) pPublishInfo->payloadLength,
+                   ( const char * ) pPublishInfo->pPayload ) );
+                     char t_payload[128];
+            if(pPublishInfo->payloadLength<128)
+            {strlcpy(t_payload, (char *)pPublishInfo->pPayload, (int)pPublishInfo->payloadLength+1);}
+            /**here to process handling result*/
+            if(strstr(t_payload,"on")!=NULL)
+            {    ESP_LOGI("ACTION:","turn on light");
+                turnOnLight();
+                
+            }
+            else if (strstr(t_payload,"off")!=NULL)
+            {
+                 ESP_LOGI("ACTION:","turn off light");
+                turnOffLight();
+              
+            }
+          memset(t_payload,0,128);
+
     }
     else
     {
@@ -1113,7 +1292,7 @@ static void eventCallback( MQTTContext_t * pMqttContext,
                 }
 
                 /* Make sure ACK packet identifier matches with Request packet identifier. */
-                assert( globalSubscribePacketIdentifier == packetIdentifier );
+               // assert( globalSubscribePacketIdentifier == packetIdentifier );
 
                 /* Update the global ACK packet identifier. */
                 globalAckPacketIdentifier = packetIdentifier;
@@ -1124,7 +1303,7 @@ static void eventCallback( MQTTContext_t * pMqttContext,
                            MQTT_EXAMPLE_TOPIC_LENGTH,
                            MQTT_EXAMPLE_TOPIC ) );
                 /* Make sure ACK packet identifier matches with Request packet identifier. */
-                assert( globalUnsubscribePacketIdentifier == packetIdentifier );
+               // assert( globalUnsubscribePacketIdentifier == packetIdentifier );
 
                 /* Update the global ACK packet identifier. */
                 globalAckPacketIdentifier = packetIdentifier;
@@ -1301,6 +1480,45 @@ static int subscribeToTopic( MQTTContext_t * pMqttContext )
     return returnStatus;
 }
 
+static int subscribeToResultTopic( MQTTContext_t * pMqttContext )
+{
+    int returnStatus = EXIT_SUCCESS;
+    MQTTStatus_t mqttStatus;
+
+    assert( pMqttContext != NULL );
+
+    /* Start with everything at 0. */
+    ( void ) memset( ( void * ) pGlobalSubscriptionList2, 0x00, sizeof( pGlobalSubscriptionList2 ) );
+
+    /* This example subscribes to only one topic and uses QOS1. */
+    pGlobalSubscriptionList2[ 0 ].qos = MQTTQoS1;
+    pGlobalSubscriptionList2[ 0 ].pTopicFilter = MQTT_RESULT_TOPIC;
+    pGlobalSubscriptionList2[ 0 ].topicFilterLength = MQTT_RESULT_TOPIC_LENGTH;
+
+    /* Generate packet identifier for the SUBSCRIBE packet. */
+    globalSubscribePacketIdentifier2 = MQTT_GetPacketId( pMqttContext );
+
+    /* Send SUBSCRIBE packet. */
+    mqttStatus = MQTT_Subscribe( pMqttContext,
+                                 pGlobalSubscriptionList2,
+                                 sizeof( pGlobalSubscriptionList2 ) / sizeof( MQTTSubscribeInfo_t ),
+                                 globalSubscribePacketIdentifier2 );
+
+    if( mqttStatus != MQTTSuccess )
+    {
+        LogError( ( "Failed to send SUBSCRIBE packet to broker with error = %s.",
+                    MQTT_Status_strerror( mqttStatus ) ) );
+        returnStatus = EXIT_FAILURE;
+    }
+    else
+    {
+        LogInfo( ( "SUBSCRIBE sent for topic %.*s to broker.\n\n",
+                   MQTT_EXAMPLE_TOPIC_LENGTH,
+                   MQTT_EXAMPLE_TOPIC ) );
+    }
+
+    return returnStatus;
+}
 /*-----------------------------------------------------------*/
 
 static int unsubscribeFromTopic( MQTTContext_t * pMqttContext )
@@ -1351,7 +1569,7 @@ static int publishToTopic( MQTTContext_t * pMqttContext )
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
     uint8_t publishIndex = MAX_OUTGOING_PUBLISHES;
-    char str[32];
+
     assert( pMqttContext != NULL );
 
     /* Get the next free index for the outgoing publish. All QoS1 outgoing
@@ -1370,10 +1588,8 @@ static int publishToTopic( MQTTContext_t * pMqttContext )
         outgoingPublishPackets[ publishIndex ].pubInfo.qos = MQTTQoS1;
         outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = MQTT_EXAMPLE_TOPIC;
         outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = MQTT_EXAMPLE_TOPIC_LENGTH;
-        int a=rand()%7+1;
-        sprintf(str,"%d",a);
-        outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = str;
-        outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = strlen(str);
+        outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = MQTT_EXAMPLE_MESSAGE;
+        outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = MQTT_EXAMPLE_MESSAGE_LENGTH;
 
         /* Get a new packet id. */
         outgoingPublishPackets[ publishIndex ].packetId = MQTT_GetPacketId( pMqttContext );
@@ -1402,6 +1618,114 @@ static int publishToTopic( MQTTContext_t * pMqttContext )
     return returnStatus;
 }
 
+static int requestUrl( MQTTContext_t * pMqttContext )
+{
+    int returnStatus = EXIT_SUCCESS;
+    MQTTStatus_t mqttStatus = MQTTSuccess;
+    uint8_t publishIndex = MAX_OUTGOING_PUBLISHES;
+
+    assert( pMqttContext != NULL );
+
+    /* Get the next free index for the outgoing publish. All QoS1 outgoing
+     * publishes are stored until a PUBACK is received. These messages are
+     * stored for supporting a resend if a network connection is broken before
+     * receiving a PUBACK. */
+    returnStatus = getNextFreeIndexForOutgoingPublishes( &publishIndex );
+
+    if( returnStatus == EXIT_FAILURE )
+    {
+        LogError( ( "Unable to find a free spot for outgoing PUBLISH message.\n\n" ) );
+    }
+    else
+    {
+        /* This example publishes to only one topic and uses QOS1. */
+        outgoingPublishPackets[ publishIndex ].pubInfo.qos = MQTTQoS1;
+        outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = MQTT_EXAMPLE_TOPIC;
+        outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = MQTT_EXAMPLE_TOPIC_LENGTH;
+        outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = MQTT_REQUEST_URL_MESSAGE;
+        outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = MQTT_REQUEST_URL_MESSAGE_LENGTH;
+
+        /* Get a new packet id. */
+        outgoingPublishPackets[ publishIndex ].packetId = MQTT_GetPacketId( pMqttContext );
+
+        /* Send PUBLISH packet. */
+        mqttStatus = MQTT_Publish( pMqttContext,
+                                   &outgoingPublishPackets[ publishIndex ].pubInfo,
+                                   outgoingPublishPackets[ publishIndex ].packetId );
+
+        if( mqttStatus != MQTTSuccess )
+        {
+            LogError( ( "Failed to send PUBLISH packet to broker with error = %s.",
+                        MQTT_Status_strerror( mqttStatus ) ) );
+            cleanupOutgoingPublishAt( publishIndex );
+            returnStatus = EXIT_FAILURE;
+        }
+        else
+        {
+            LogInfo( ( "PUBLISH sent for topic %.*s to broker with packet ID %u.\n\n",
+                       MQTT_EXAMPLE_TOPIC_LENGTH,
+                       MQTT_EXAMPLE_TOPIC,
+                       outgoingPublishPackets[ publishIndex ].packetId ) );
+        }
+    }
+
+    return returnStatus;
+}
+
+static int requestPicRecog( MQTTContext_t * pMqttContext )
+{
+    int returnStatus = EXIT_SUCCESS;
+    MQTTStatus_t mqttStatus = MQTTSuccess;
+    uint8_t publishIndex = MAX_OUTGOING_PUBLISHES;
+    char cPayload[128];
+    assert( pMqttContext != NULL );
+
+    /* Get the next free index for the outgoing publish. All QoS1 outgoing
+     * publishes are stored until a PUBACK is received. These messages are
+     * stored for supporting a resend if a network connection is broken before
+     * receiving a PUBACK. */
+    returnStatus = getNextFreeIndexForOutgoingPublishes( &publishIndex );
+
+    if( returnStatus == EXIT_FAILURE )
+    {
+        LogError( ( "Unable to find a free spot for outgoing PUBLISH message.\n\n" ) );
+    }
+    else
+    {
+         sprintf(cPayload, "{\"payload\": \"%s\"}", t_filename);
+        /* This example publishes to only one topic and uses QOS1. */
+        outgoingPublishPackets[ publishIndex ].pubInfo.qos = MQTTQoS1;
+        outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = MQTT_RESULT_TOPIC;
+        outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = MQTT_RESULT_TOPIC_LENGTH;
+        outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = (void *)cPayload;
+        outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = strlen(cPayload);
+
+        /* Get a new packet id. */
+        outgoingPublishPackets[ publishIndex ].packetId = MQTT_GetPacketId( pMqttContext );
+
+        /* Send PUBLISH packet. */
+        mqttStatus = MQTT_Publish( pMqttContext,
+                                   &outgoingPublishPackets[ publishIndex ].pubInfo,
+                                   outgoingPublishPackets[ publishIndex ].packetId );
+
+        if( mqttStatus != MQTTSuccess )
+        {
+            LogError( ( "Failed to send PUBLISH packet to broker with error = %s.",
+                        MQTT_Status_strerror( mqttStatus ) ) );
+            cleanupOutgoingPublishAt( publishIndex );
+            returnStatus = EXIT_FAILURE;
+        }
+        else
+        {
+            LogInfo( ( "PUBLISH sent for topic %.*s to broker with packet ID %u.\n\n",
+                       MQTT_EXAMPLE_TOPIC_LENGTH,
+                       MQTT_EXAMPLE_TOPIC,
+                       outgoingPublishPackets[ publishIndex ].packetId ) );
+        }
+    }
+
+    return returnStatus;
+}
 /*-----------------------------------------------------------*/
 
 static int initializeMqtt( MQTTContext_t * pMqttContext,
@@ -1414,7 +1738,7 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
 
     assert( pMqttContext != NULL );
     assert( pNetworkContext != NULL );
-    srand(114514);
+
     /* Fill in TransportInterface send and receive function pointers.
      * For this demo, TCP sockets are used to send and receive data
      * from network. Network context is SSL context for OpenSSL.*/
@@ -1480,6 +1804,7 @@ static int subscribePublishLoop( MQTTContext_t * pMqttContext )
                    MQTT_EXAMPLE_TOPIC_LENGTH,
                    MQTT_EXAMPLE_TOPIC ) );
         returnStatus = subscribeToTopic( pMqttContext );
+        returnStatus = subscribeToResultTopic( pMqttContext );
     }
 
     if( returnStatus == EXIT_SUCCESS )
@@ -1495,7 +1820,25 @@ static int subscribePublishLoop( MQTTContext_t * pMqttContext )
                                          globalSubscribePacketIdentifier,
                                          MQTT_PROCESS_LOOP_TIMEOUT_MS );
     }
+   /* if( returnStatus == EXIT_SUCCESS )
+    {
+       
+        LogInfo( ( "Subscribing to the MQTT topic %.*s.",
+                   MQTT_RESULT_TOPIC_LENGTH,
+                   MQTT_RESULT_TOPIC ) );
+        returnStatus = subscribeToResultTopic( pMqttContext );
+      
+    }
 
+    if( returnStatus == EXIT_SUCCESS )
+    {
+      
+        returnStatus = waitForPacketAck( pMqttContext,
+                                         globalSubscribePacketIdentifier2,
+                                         MQTT_PROCESS_LOOP_TIMEOUT_MS );
+    }*/
+    
+ 
     /* Check if recent subscription request has been rejected. globalSubAckStatus is updated
      * in eventCallback to reflect the status of the SUBACK sent by the broker. */
     if( ( returnStatus == EXIT_SUCCESS ) && ( globalSubAckStatus == MQTTSubAckFailure ) )
@@ -1513,12 +1856,7 @@ static int subscribePublishLoop( MQTTContext_t * pMqttContext )
     {
         /* Publish messages with QOS1, receive incoming messages and
          * send keep alive messages. */
-        for( publishCount = 0; publishCount < maxPublishCount; publishCount++ )
-        {
-            LogInfo( ( "Sending Publish to the MQTT topic %.*s.",
-                       MQTT_EXAMPLE_TOPIC_LENGTH,
-                       MQTT_EXAMPLE_TOPIC ) );
-            returnStatus = publishToTopic( pMqttContext );
+            //returnStatus = requestUrl( pMqttContext );
 
             /* Calling MQTT_ProcessLoop to process incoming publish echo, since
              * application subscribed to the same topic the broker will send
@@ -1526,62 +1864,48 @@ static int subscribePublishLoop( MQTTContext_t * pMqttContext )
              * sends ping request to broker if MQTT_KEEP_ALIVE_INTERVAL_SECONDS
              * has expired since the last MQTT packet sent and receive
              * ping responses. */
-            mqttStatus = processLoopWithTimeout( pMqttContext, MQTT_PROCESS_LOOP_TIMEOUT_MS );
+            while (1)
+            {
+                 mqttStatus = processLoopWithTimeout( pMqttContext, 1000 );
 
             /* For any error in #MQTT_ProcessLoop, exit the loop and disconnect
              * from the broker. */
-            if( ( mqttStatus != MQTTSuccess ) && ( mqttStatus != MQTTNeedMoreBytes ) )
-            {
-                LogError( ( "MQTT_ProcessLoop returned with status = %s.",
+                 if( ( mqttStatus != MQTTSuccess ) && ( mqttStatus != MQTTNeedMoreBytes ) )
+                 {
+                    LogError( ( "MQTT_ProcessLoop returned with status = %s.",
                             MQTT_Status_strerror( mqttStatus ) ) );
-                returnStatus = EXIT_FAILURE;
-                break;
+                    returnStatus = EXIT_FAILURE;
+               // break;
+                }
+                if(buttonTrigger)
+                {
+                   returnStatus = requestUrl( pMqttContext );
+                    buttonTrigger = false;
+                }
+                if(urlTrigger)
+                {
+                    requestPicRecog(pMqttContext);
+                    urlTrigger = false;
+                }
             }
-
-            LogInfo( ( "Delay before continuing to next iteration.\n\n" ) );
-
+            
+          
             /* Leave connection idle for some time. */
-            sleep( DELAY_BETWEEN_PUBLISHES_SECONDS );
-        }
+            //sleep( DELAY_BETWEEN_PUBLISHES_SECONDS );
+        
     }
 
-    if( returnStatus == EXIT_SUCCESS )
+   /* if( returnStatus == EXIT_SUCCESS )
     {
-        /* Unsubscribe from the topic. */
+       
         LogInfo( ( "Unsubscribing from the MQTT topic %.*s.",
                    MQTT_EXAMPLE_TOPIC_LENGTH,
                    MQTT_EXAMPLE_TOPIC ) );
         returnStatus = unsubscribeFromTopic( pMqttContext );
-    }
-
-    if( returnStatus == EXIT_SUCCESS )
-    {
-        /* Process Incoming UNSUBACK packet from the broker. */
-        returnStatus = waitForPacketAck( pMqttContext,
-                                         globalUnsubscribePacketIdentifier,
-                                         MQTT_PROCESS_LOOP_TIMEOUT_MS );
-    }
-
-    /* Send an MQTT Disconnect packet over the already connected TCP socket.
-     * There is no corresponding response for the disconnect packet. After sending
-     * disconnect, client must close the network connection. */
-    LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
-               AWS_IOT_ENDPOINT_LENGTH,
-               AWS_IOT_ENDPOINT ) );
-
-    if( returnStatus == EXIT_FAILURE )
-    {
-        /* Returned status is not used to update the local status as there
-         * were failures in demo execution. */
-        ( void ) disconnectMqttSession( pMqttContext );
-    }
-    else
-    {
-        returnStatus = disconnectMqttSession( pMqttContext );
-    }
+    }*/
 
     /* Reset global SUBACK status variable after completion of subscription request cycle. */
-    globalSubAckStatus = MQTTSubAckFailure;
+    //globalSubAckStatus = MQTTSubAckFailure;
 
     return returnStatus;
 }
@@ -1686,7 +2010,8 @@ int aws_iot_demo_main( int argc,
 
     ( void ) argc;
     ( void ) argv;
-
+    initGpio();
+     xTaskCreate(&button_pressed_task, "button_pressed_task", 4096, NULL, 4, NULL);
     /* Seed pseudo random number generator (provided by ISO C standard library) for
      * use by retry utils library when retrying failed network operations. */
 
@@ -1701,8 +2026,8 @@ int aws_iot_demo_main( int argc,
 
     if( returnStatus == EXIT_SUCCESS )
     {
-        for( ; ; )
-        {
+        /*for( ; ; )
+        {*/
             /* Attempt to connect to the MQTT broker. If connection fails, retry after
              * a timeout. Timeout value will be exponentially increased till the maximum
              * attempts are reached or maximum timeout value is reached. The function
@@ -1748,21 +2073,9 @@ int aws_iot_demo_main( int argc,
 
                 /* If TLS session is established, execute Subscribe/Publish loop. */
                 returnStatus = subscribePublishLoop( &mqttContext );
-
-                /* End TLS session, then close TCP connection. */
-                cleanupESPSecureMgrCerts( &xNetworkContext );
-                ( void ) xTlsDisconnect( &xNetworkContext );
+    
             }
-
-            if( returnStatus == EXIT_SUCCESS )
-            {
-                /* Log message indicating an iteration completed successfully. */
-                LogInfo( ( "Demo completed successfully." ) );
-            }
-
-            LogInfo( ( "Short delay before starting the next iteration....\n" ) );
-            sleep( MQTT_SUBPUB_LOOP_DELAY_SECONDS );
-        }
+        /*}*/
     }
 
     return returnStatus;
