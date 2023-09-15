@@ -6,7 +6,6 @@
 *.lo
 *.o
 *.obj
-main/certs/client.crt
 # Precompiled Headers
 *.gch
 *.pch
