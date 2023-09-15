@@ -1,0 +1,138 @@
+menu "CCIoT Class Configuration"
+    config MQTT_CLIENT_IDENTIFIER
+        string "The MQTT client identifier used in this example"
+        default "testClient"
+        help
+            The MQTT client identifier used in this example. Each client identifier must be unique.
+            so edit as required to ensure that no two clients connecting to the same broker use the same client identifier.
+
+    config MQTT_BROKER_ENDPOINT
+        string "Endpoint of the MQTT broker to connect to"
+        default "test.mosquitto.org"
+        help
+            This example can be run with any MQTT broker, that supports server authentication.
+
+    config MQTT_BROKER_PORT
+        int "Port of the MQTT broker use"
+        default 8883
+        help
+            In general, port 8883 is for secured MQTT connections.
+            Port 443 requires use of the ALPN TLS extension with the ALPN protocol name.
+            When using port 8883, ALPN is not required.
+
+    config HARDWARE_PLATFORM_NAME
+        string "The hardware platform"
+        default "ESP32"
+        help
+            The name of the hardware platform the application is running on.
+
+    config MQTT_NETWORK_BUFFER_SIZE
+        int "Size of the network buffer for MQTT packets"
+        range 1024 2048
+        default 1024
+        help
+            Size of the network buffer for MQTT packets.
+
+    choice EXAMPLE_CHOOSE_PKI_ACCESS_METHOD
+        prompt "Choose PKI credentials access method"
+        default EXAMPLE_USE_PLAIN_FLASH_STORAGE
+        help
+            ESP devices support multiple ways to secure store the PKI credentials.
+            Currently Secure Element (ATECC608A) and DS peripheral
+            (using ESP Secure Cert Manager) are supported.
+            The default behaviour is to access the PKI credentials which are embedded in the binary.
+            Consult the ESP-TLS documentation in ESP-IDF Programming guide for more details.
+
+        config EXAMPLE_USE_SECURE_ELEMENT
+        bool "Use secure element (ATECC608A)"
+        depends on (IDF_TARGET_ESP32 || IDF_TARGET_ESP32C2) && ESP_TLS_USING_MBEDTLS
+        select ESP_TLS_USE_SECURE_ELEMENT
+        help
+            Enable the use of secure element for the example.
+            The esp-cryptoauthlib component is required for enabling
+            this option.
+
+        config EXAMPLE_USE_ESP_SECURE_CERT_MGR
+        bool "Use ESP Secure Certificate Manager"
+        help
+            Enable the use of ESP Secure Certificate Manager APIs for the example.
+            Please refer to ESP Secure Certificate Manager documentation for more details.
+
+        config EXAMPLE_USE_PLAIN_FLASH_STORAGE
+        bool "Use flash storage (default)"
+        help
+            This option expects the Private key and Device certificate to be embedded in the binary.
+            This is the default behaviour.
+    endchoice
+    
+    config EXAMPLE_WIFI_SSID
+        string "WiFi SSID"
+        default "wpa2_test"
+        help
+            SSID (network name) for the example to connect to.
+
+    config EXAMPLE_VALIDATE_SERVER_CERT
+        bool "Validate server"
+        default y
+        help
+            Validate the servers' certificate using CA cert.
+
+    choice
+        prompt "EAP method for the example to use"
+        default EXAMPLE_EAP_METHOD_PEAP
+        config EXAMPLE_EAP_METHOD_TLS
+            bool "TLS"
+        config EXAMPLE_EAP_METHOD_PEAP
+            bool "PEAP"
+        config EXAMPLE_EAP_METHOD_TTLS
+            bool "TTLS"
+    endchoice
+
+    config EXAMPLE_EAP_METHOD
+        int
+        default 0 if EXAMPLE_EAP_METHOD_TLS
+        default 1 if EXAMPLE_EAP_METHOD_PEAP
+        default 2 if EXAMPLE_EAP_METHOD_TTLS
+
+    choice
+        prompt "Phase2 method for TTLS"
+        depends on EXAMPLE_EAP_METHOD_TTLS
+        default EXAMPLE_EAP_METHOD_TTLS_PHASE2_MSCHAPV2
+        config EXAMPLE_EAP_METHOD_TTLS_PHASE2_MSCHAPV2
+            bool "MSCHAPV2"
+        config EXAMPLE_EAP_METHOD_TTLS_PHASE2_MSCHAP
+            bool "MSCHAP"
+        config EXAMPLE_EAP_METHOD_TTLS_PHASE2_PAP
+            bool "PAP"
+        config EXAMPLE_EAP_METHOD_TTLS_PHASE2_CHAP
+            bool "CHAP"
+    endchoice
+
+    config EXAMPLE_EAP_METHOD_TTLS_PHASE_2
+        int
+        default 1 if EXAMPLE_EAP_METHOD_TTLS_PHASE2_MSCHAPV2
+        default 2 if EXAMPLE_EAP_METHOD_TTLS_PHASE2_MSCHAP
+        default 3 if EXAMPLE_EAP_METHOD_TTLS_PHASE2_PAP
+        default 4 if EXAMPLE_EAP_METHOD_TTLS_PHASE2_CHAP
+
+    config EXAMPLE_EAP_ID
+        string "EAP ID"
+        default "example@espressif.com"
+        help
+            Identity in phase 1 of EAP procedure.
+
+    config EXAMPLE_EAP_USERNAME
+        string "EAP USERNAME"
+        depends on EXAMPLE_EAP_METHOD_PEAP || EXAMPLE_EAP_METHOD_TTLS
+        default "espressif"
+        help
+            Username for EAP method (PEAP and TTLS).
+
+    config EXAMPLE_EAP_PASSWORD
+        string "EAP PASSWORD"
+        depends on EXAMPLE_EAP_METHOD_PEAP || EXAMPLE_EAP_METHOD_TTLS
+        default "test11"
+        help
+            Password for EAP method (PEAP and TTLS).
+    
+endmenu
