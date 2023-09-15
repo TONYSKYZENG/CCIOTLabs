@@ -30,6 +30,7 @@
 #include "esp_netif.h"
 
 #include "ssd1306.h"
+#include "ds18b20.h"
 //#include "font8x8_basic.h"
 /* The examples use simple WiFi configuration that you can set via
    project configuration menu.
@@ -217,10 +218,22 @@ void initSSD1306(SSD1306_t *dev)
     ssd1306_display_text(dev, 0, "Connecting...", 14, false);
     ssd1306_software_scroll(dev, (dev->_pages - 1), 1);
 }
+void ds18b20_test()
+{
+    ds18b20_init(4);
+	ds18b20_requestTemperatures();
+    float temp3 =ds18b20_get_temp();
+    char str[32];
+    sprintf(str,"%5.2lf c", (temp3));
+  
+    
+    ssd1306_display_text(&ssd1306Dev,1, str, 7, false);
+}
 void app_main(void)
 {  
     ESP_ERROR_CHECK( nvs_flash_init() );
     initSSD1306(&ssd1306Dev);
+   
     // ssd1306_display_text(dev, 0, "SSD1306 128x64", 14, false);
     initialise_wifi();
    
@@ -228,5 +241,13 @@ void app_main(void)
     while(!isConnected);
     ssd1306_display_text(&ssd1306Dev, 0, "Connected    ", 14, false);
     showIP();
-    awsTask();
+    while (1)
+    {
+        /* code */
+        ds18b20_test();
+       vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    
+    
+    //awsTask();
 }
