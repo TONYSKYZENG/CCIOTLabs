@@ -38,5 +38,6 @@ doc/
 /cmake-build-debug/_deps/
 /cmake-build-release/
 /cmake-build-release/_deps/
-main/certs/*
+*.crt
+*.key
 /.vscode
