@@ -248,7 +248,7 @@ void app_main(void)
        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     */
-    ds18b20_init(4);
+    ds18b20_init(21);
     
     awsTask();
 }
