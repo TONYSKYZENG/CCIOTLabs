@@ -39,7 +39,7 @@ Go to 'CCIoT Class Configuration' and do the follwoing:
 ### Connect to the ds18b20
 Module Pin/MakePython Pin
 * VCC->3v3
-* D0/IO4
+* D0/IO21
 * GND/GMD
 ### Build and Flash the project.
 

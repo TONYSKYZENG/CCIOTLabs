@@ -220,7 +220,7 @@ void initSSD1306(SSD1306_t *dev)
 }
 void ds18b20_test()
 {
-    ds18b20_init(4);
+    ds18b20_init(21);
 	ds18b20_requestTemperatures();
     float temp3 =ds18b20_get_temp();
     char str[32];
