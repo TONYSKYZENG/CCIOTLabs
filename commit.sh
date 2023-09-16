@@ -1,5 +1,5 @@
 
-BRANCH=lab1_2_1
+BRANCH=lab1_2_2
 
 git init
 git checkout -b $BRANCH

@@ -100,7 +100,7 @@ Go to 'CCIoT Class Configuration' and do the follwoing:
 1. Go to AWS-IOT menu, click Manage->All devices->Things.
 2. Follow the guide to create a new thing, use all default settings.
 3. When AWS asks you to create a policy, select "allow", "*", "*".
-4. Download the certificates from AWS. Then copy the .pem.key and .pem.crt files to the main/certs subdirectory of the example. Rename them by removing the device-specific prefix - the new names are client.key and client.crt.
+4. Download the certificates from AWS. Then copy the xxx-private.pem.key and xxx-certificate.pem.crt files to the main/certs subdirectory of the example. Rename them by removing the device-specific prefix - the new names are client.key and client.crt.
 
 ### Find & Set AWS Endpoint Hostname 
 

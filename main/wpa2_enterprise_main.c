@@ -241,13 +241,14 @@ void app_main(void)
     while(!isConnected);
     ssd1306_display_text(&ssd1306Dev, 0, "Connected    ", 14, false);
     showIP();
-    while (1)
+   /* while (1)
     {
-        /* code */
+       
         ds18b20_test();
        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+    */
+    ds18b20_init(4);
     
-    
-    //awsTask();
+    awsTask();
 }

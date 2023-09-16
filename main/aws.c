@@ -56,6 +56,7 @@
 #include <string.h>
 #include <time.h>
 #include "ssd1306.h"
+#include "ds18b20.h"
 /* POSIX includes. */
 #include <unistd.h>
 
@@ -1370,8 +1371,9 @@ static int publishToTopic( MQTTContext_t * pMqttContext )
         outgoingPublishPackets[ publishIndex ].pubInfo.qos = MQTTQoS1;
         outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = MQTT_EXAMPLE_TOPIC;
         outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = MQTT_EXAMPLE_TOPIC_LENGTH;
-        int a=rand()%7+1;
-        sprintf(str,"%d",a);
+        ds18b20_requestTemperatures();
+        float temp3 =ds18b20_get_temp();
+        sprintf(str,"%5.2lf", (temp3));
         outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = str;
         outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = strlen(str);
 
