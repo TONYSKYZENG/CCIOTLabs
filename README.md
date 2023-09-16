@@ -29,11 +29,11 @@ Go to SSD1306 Configuration and do the following
 ```
 idf.py menuconfig
 ```
-Go to 'Example Configuration' and do the follwoing:
+Go to 'CCIoT Class Configuration' and do the follwoing:
 * Check SSID of Access Point to connect in Example Configuration to be 'SUTD-Wifi'.
 * Select EAP method: TLS, TTLS or PEAP (SUTD-Wifi uses PEAP).
 * Select Phase2 method (only for TTLS).
-* Enter EAP-ID as <your student id> @mymail.sutd.edu.sg.
+* Enter EAP-ID as your student id @mymail.sutd.edu.sg.
 * Enter Username (Your student id, only numbers) and Password (The password you use to log into myportal).
 * Enable or disable 'Validate Server' option. (DISABLE it for sutd wifi)
 ### Connect to the ds18b20
@@ -52,6 +52,6 @@ idf.py -p PORT flash monitor
 2. 'Connected' will remove the 'Connecting' once you can successfully connect to SUTD-Wifi, and you will see tour IP
 3. The temperature readings is displayed on OLED and updated every second.
 ### Known Issues
-Please disconnect the ds18b20 module when flashing
+Please disconnect the ds18b20 module when flashing, if there are some errors.
 
    
