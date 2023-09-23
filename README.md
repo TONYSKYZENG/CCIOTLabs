@@ -29,10 +29,10 @@ Do remember this is an over utilization, and errors are as expected and even des
 idf.py menuconfig
 ```
 Go to 'CCIoT Class Configuration' and do the follwoing:
-* Check SSID of Access Point to connect in Example Configuration to be 'SUTD-Wifi'.
+* Check SSID of Access Point to connect in Example Configuration to be 'SUTD_Wifi'.
 * Select EAP method: TLS, TTLS or PEAP (SUTD-Wifi uses PEAP).
 * Select Phase2 method (only for TTLS).
-* Enter EAP-ID as your student id @mymail.sutd.edu.sg.
+* Enter EAP-ID as your student id @mymail.sutd.edu.sg. (Only do this if default configuration fails)
 * Enter Username (Your student id, only numbers) and Password (The password you use to log into myportal).
 * Enable or disable 'Validate Server' option. (DISABLE it for sutd wifi)
 ### Configuration on AWS
