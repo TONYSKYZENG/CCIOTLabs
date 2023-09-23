@@ -102,7 +102,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
         isConnected=1;
      httpd_handle_t server =start_webserver();
-       // xTaskCreate(&awsTask, "awsTask", 80000, NULL, 5, NULL);
+       xTaskCreate(&awsTask, "awsTask", 80000, NULL, 5, NULL);
        
         // xTaskCreate(&awsTask, "awsTask", 8192, NULL, 5, NULL);
        //awsTask();
