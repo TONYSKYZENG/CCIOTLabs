@@ -21,7 +21,7 @@ This example shows how ESP-CAM connects to AP with wpa2 enterprise encryption (i
 idf.py menuconfig
 ```
 Go to 'CCIoT Class Configuration' and do the follwoing:
-* Check SSID of Access Point to connect in Example Configuration to be 'SUTD-Wifi'.
+* Check SSID of Access Point to connect in Example Configuration to be 'SUTD_Wifi'.
 * Select EAP method: TLS, TTLS or PEAP (SUTD-Wifi uses PEAP).
 * Select Phase2 method (only for TTLS).
 * Enter EAP-ID as your student id @mymail.sutd.edu.sg. (Only do this if default config fails) 
