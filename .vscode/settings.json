@@ -1,0 +1,6 @@
+{
+    "idf.adapterTargetName": "esp32",
+    "files.watcherExclude": {
+        "**/target": true
+    }
+}

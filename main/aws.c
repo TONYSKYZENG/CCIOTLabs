@@ -1041,7 +1041,9 @@ static int handlePublishResend( MQTTContext_t * pMqttContext )
 
 /*-----------------------------------------------------------*/
 char t_filename[41] = "";
-
+char* t_url;
+char *t_params;
+bool isUploading2S3=false;
 extern esp_err_t upload_image_to_s3(char *webserver, char *url);
 static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
                                    uint16_t packetIdentifier )
@@ -1072,8 +1074,8 @@ static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
         tokens = str_split(t_payload, '/');
 
          
-        char* t_url = malloc(128 * sizeof(char));
-        char* t_params = malloc(1280 * sizeof(char));
+        t_url = malloc(128 * sizeof(char));
+       t_params = malloc(1280 * sizeof(char));
         if (tokens)
         {
             int i;
@@ -1096,9 +1098,11 @@ static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
             free(tokens);
 
             if (i == 3) {
+                isUploading2S3=true;
                 if (upload_image_to_s3(t_url, t_params) == ESP_OK) {
                     urlTrigger = true;
                 }
+                isUploading2S3=false;
             }
         }
         free(t_url);

@@ -80,7 +80,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-        xTaskCreate(&awsTask, "awsTask", 8192, NULL, 4, NULL);
+        //xTaskCreate(&awsTask, "awsTask", 8192, NULL, 4, NULL);
         httpd_handle_t server =start_webserver();
        isConnected=1;
     }

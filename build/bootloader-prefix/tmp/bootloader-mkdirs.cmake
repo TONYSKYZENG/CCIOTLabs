@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 file(MAKE_DIRECTORY
-  "/home/tony/Platforms/esp/v4_3/esp-idf/components/bootloader/subproject"
+  "/home/tony/Platforms/esp/v4_4/esp-idf/components/bootloader/subproject"
   "/home/tony/projects/CCIOTLabs/build/bootloader"
   "/home/tony/projects/CCIOTLabs/build/bootloader-prefix"
   "/home/tony/projects/CCIOTLabs/build/bootloader-prefix/tmp"

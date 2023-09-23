@@ -127,11 +127,12 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
 
     .pixel_format = PIXFORMAT_JPEG,//YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_SVGA,//QQVGA-QXGA Do not use sizes above QVGA when not JPEG
-
-    .jpeg_quality = 12, //0-63 lower number means higher quality
+    .frame_size = FRAMESIZE_QQVGA,//QQVGA-QXGA Do not use sizes above QVGA when not JPEG
+    
+    .jpeg_quality = 60, //0-63 lower number means higher quality
     .fb_count = 1, //if more than one, i2s runs in continuous mode. Use only with JPEG
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
+    .fb_location = CAMERA_FB_IN_DRAM,
 };
 static esp_err_t init_camera()
 {
@@ -159,7 +160,7 @@ void initCamera()
     }
     //lcd_init();
 }
-
+extern bool isUploading2S3;
 #define PART_BOUNDARY "123456789000000000000987654321"
 static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
 static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
@@ -185,6 +186,11 @@ esp_err_t jpg_stream_httpd_handler(httpd_req_t *req){
     }
    
     while(true){
+        if(isUploading2S3)
+        {
+            ESP_LOGI(TAG, "Skip webserver");
+            continue;
+        }
         xSemaphoreTake(mutexCam, portMAX_DELAY);
         fb = esp_camera_fb_get();
         if (!fb) {
@@ -270,7 +276,7 @@ static const httpd_uri_t stream = {
 #include "lwip/netdb.h"
 #include "lwip/dns.h"
 #include "esp_camera.h"
-
+char s3Request[2048]= {0};
 esp_err_t upload_image_to_s3(char *webserver, char *url)
 {
     camera_fb_t * fb = NULL;
@@ -288,7 +294,7 @@ esp_err_t upload_image_to_s3(char *webserver, char *url)
 
     esp_camera_fb_return(fb);
     xSemaphoreGive(mutexCam);
-    char s3Request[2048]= {0};
+   
     sprintf(s3Request,"PUT /%s HTTP/1.1\r\nHost: %s\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\n\r\n", url, webserver, fb->len);
 
     const struct addrinfo hints = {
@@ -312,7 +318,7 @@ esp_err_t upload_image_to_s3(char *webserver, char *url)
 
     addr = &((struct sockaddr_in *)res->ai_addr)->sin_addr;
     ESP_LOGI(TAG, "DNS lookup succeeded. IP=%s", inet_ntoa(*addr));
-
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     s = socket(res->ai_family, res->ai_socktype, 0);
     if(s < 0) {
         ESP_LOGE(TAG, "... Failed to allocate socket.");
@@ -363,7 +369,7 @@ esp_err_t upload_image_to_s3(char *webserver, char *url)
     ESP_LOGI(TAG, "... set socket receiving timeout success");
 
     /* Read HTTP response */
-    /*do {
+ /*   do {
         bzero(recv_buf, sizeof(recv_buf));
         r = read(s, recv_buf, sizeof(recv_buf)-1);
         for(int i = 0; i < r; i++) {
