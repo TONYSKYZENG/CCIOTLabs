@@ -10,7 +10,7 @@ This example shows how ESP-CAM connects to AP with wpa2 enterprise encryption (i
 6. Connect to AP.
 7. Once get the ip from SUTD-Wifi, start the webserver of video
 8. Once get the ip from SUTD-Wifi, connect to aws
-7. Once you pressed the button, i.e., connect IO21 to VCC and then release it, the ESP-CAM will try to 
+7. Once you pressed the button, i.e., connect IO12 to VCC and then release it, the ESP-CAM will try to 
   * take a photo,
   * acquire a s3 signed url
   * upload the photo
