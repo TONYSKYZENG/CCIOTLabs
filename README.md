@@ -15,14 +15,6 @@ This example shows how ESP-CAM connects to AP with wpa2 enterprise encryption (i
 
 ## How to use Example
 
-### Configuration ON THE SSD1306
-```
-idf.py menuconfig
-```
-Go to SSD1306 Configuration and do the following
-* Check your interface (default is i2c for the Makepython board)
-* Check your SCL and SDA (5,4, respectively for the Makepython board)
-* For rest pin, set it to -1
 ### Configuration on SUTD-Wifi
 
 ```
@@ -32,7 +24,7 @@ Go to 'CCIoT Class Configuration' and do the follwoing:
 * Check SSID of Access Point to connect in Example Configuration to be 'SUTD-Wifi'.
 * Select EAP method: TLS, TTLS or PEAP (SUTD-Wifi uses PEAP).
 * Select Phase2 method (only for TTLS).
-* Enter EAP-ID as your student id @mymail.sutd.edu.sg.
+* Enter EAP-ID as your student id @mymail.sutd.edu.sg. (Only do this if default config fails) 
 * Enter Username (Your student id, only numbers) and Password (The password you use to log into myportal).
 * Enable or disable 'Validate Server' option. (DISABLE it for sutd wifi)
 ### Build and Flash the project.
