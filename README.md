@@ -51,4 +51,5 @@ idf.py monitor
 ```
 * After you see some words in organge, saying 'idf_monitor xxxx', disconnect IO0 and GND, and press RST again
 * You will see the words change into green, which means the ESP-CAM starts to work
+* Find the IP when it's printed, copy/paste it to your web browser, you will see the video 
 
