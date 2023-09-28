@@ -1,0 +1,7 @@
+
+git checkout main
+git init
+git add .
+git commit -F com_scripts
+git push origin main
+555
